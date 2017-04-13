@@ -79,6 +79,11 @@ func (w *Work) Start() {
 
 }
 
+// 返回任务列表现有的个数
+func (w *Work) Len() int {
+	return len(w.taskList)
+}
+
 // 创建一个Work
 func NewWork() *Work {
 	w := new(Work)
