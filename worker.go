@@ -11,13 +11,19 @@ type Tasker interface {
 }
 
 type Work struct {
-	debug         bool
-	c             chan bool
-	idleSleepTime time.Duration //没有获取到任务再次获取的间隔时间
-	taskSleepTime time.Duration //每个任务之间间隔的时间
-	lock          sync.Mutex
-	limit         int
-	taskList      []Tasker
+	debug         bool          //是否开启debu，如果开启debug，则会在对应的地方执行log函数。
+	retryTimes    uint8         //如果任务失败重试的次数，默认为0。
+	c             chan bool     //用于通讯的chan，长度根据limit长度在start的时候进行make
+	idleSleepTime time.Duration //没有获取到任务再次获取的间隔时间，默认为1s。
+	taskSleepTime time.Duration //每个任务之间间隔的时间，默认为0。
+	lock          sync.Mutex    //获取task的时候要进行并发处理，所以先将slice锁起来。
+	limit         int           //最多同时有几个任务
+	taskList      []Tasker      //任务列表
+}
+
+// 设置失败重试的次数
+func (w *Work) RetryTimes(t uint8) {
+	w.retryTimes = t
 }
 
 // 设置没有任务的时候的睡眠时间
@@ -80,10 +86,23 @@ func (w *Work) Start() {
 func (w *Work) Do() {
 	for {
 		t, ok := w.getTask()
+		try := w.retryTimes
+		ret := false
 		if ok {
-			ret := t.Do()
-			if w.taskSleepTime != 0 {
-				time.Sleep(w.taskSleepTime)
+			for {
+				ret = t.Do()
+				if w.taskSleepTime != 0 {
+					time.Sleep(w.taskSleepTime)
+				}
+				if ret {
+					break
+				} else {
+					if try <= 0 {
+						break
+					} else {
+						continue
+					}
+				}
 			}
 			w.c <- ret
 			break
@@ -108,5 +127,6 @@ func NewWork() *Work {
 	w.idleSleepTime = time.Second
 	w.taskSleepTime = 0
 	w.limit = 1
+	w.retryTimes = 0
 	return w
 }
