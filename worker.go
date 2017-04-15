@@ -11,7 +11,8 @@ type Tasker interface {
 }
 
 type Work struct {
-	debug         bool          //是否开启debu，如果开启debug，则会在对应的地方执行log函数。
+	debug         bool //是否开启debu，如果开启debug，则会在对应的地方执行log函数。
+	isStop        bool
 	retryTimes    uint8         //如果任务失败重试的次数，默认为0。
 	c             chan bool     //用于通讯的chan，长度根据limit长度在start的时候进行make
 	idleSleepTime time.Duration //没有获取到任务再次获取的间隔时间，默认为1s。
@@ -77,7 +78,11 @@ func (w *Work) Start() {
 
 	for {
 		<-w.c
-		go w.Do()
+		if !w.isStop {
+			go w.Do()
+		} else {
+			break
+		}
 	}
 
 }
@@ -112,11 +117,17 @@ func (w *Work) Do() {
 
 }
 
+// 停止所有任务，已经执行的任务会等执行完毕之后才会停止。
+func (w *Work) Stop() {
+	w.isStop = true
+}
+
 // 返回任务列表现有的个数
 func (w *Work) Len() int {
 	return len(w.taskList)
 }
 
+// debug的时候会调用这个函数
 func (w *Work) log() {
 	fmt.Println("task len:", w.Len(), "limit", w.limit, "idleSleepTime:", w.idleSleepTime, "taskSleepTime:", w.taskSleepTime)
 }
@@ -128,5 +139,6 @@ func NewWork() *Work {
 	w.taskSleepTime = 0
 	w.limit = 1
 	w.retryTimes = 0
+	w.isStop = false
 	return w
 }
